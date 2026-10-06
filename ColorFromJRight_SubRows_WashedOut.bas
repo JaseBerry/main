@@ -252,20 +252,21 @@ Private Sub AddToRange(ByRef target As Range, addition As Range)
 End Sub
 
 ' ---------------------------------------------------------------------------
-' Copy each merged cell's value into the hidden cells underneath it (A:G),
-' keeping the merges. Excel's filter then treats every row of a merged block
-' as having the parent value. Re-run after editing or adding merged values.
+' "Fix 2" for merged cells: copy each merged cell's value into the hidden cells
+' underneath it, keeping the merges. Excel's filter then treats every row of a
+' merged block as having the parent value. Re-run after editing merged values.
+'   FillUnderAllMergedCells - every merged cell on the active sheet
+'   FillUnderMergedCells    - merged cells in the data rows of columns A:G only
 ' ---------------------------------------------------------------------------
+Sub FillUnderAllMergedCells()
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    FillMergedIn ws, ws.UsedRange
+End Sub
+
 Sub FillUnderMergedCells()
     Dim ws As Worksheet
-    Dim tmp As Worksheet
     Dim lastRowTotal As Long
-    Dim src As Range
-    Dim c As Range
-    Dim area As Range
-    Dim topCell As Range
-    Dim areaAddresses As Collection
-    Dim addr As Variant
 
     Set ws = ActiveSheet
 
@@ -274,7 +275,16 @@ Sub FillUnderMergedCells()
     On Error GoTo 0
     If lastRowTotal < FIRST_DATA_ROW Then Exit Sub
 
-    Set src = ws.Range(ws.Cells(FIRST_DATA_ROW, "A"), ws.Cells(lastRowTotal, "G"))
+    FillMergedIn ws, ws.Range(ws.Cells(FIRST_DATA_ROW, "A"), ws.Cells(lastRowTotal, "G"))
+End Sub
+
+Private Sub FillMergedIn(ws As Worksheet, src As Range)
+    Dim tmp As Worksheet
+    Dim c As Range
+    Dim area As Range
+    Dim topCell As Range
+    Dim areaAddresses As Collection
+    Dim addr As Variant
 
     ' Record every merged area before unmerging
     Set areaAddresses = New Collection
@@ -286,37 +296,49 @@ Sub FillUnderMergedCells()
         End If
     Next c
     If areaAddresses.Count = 0 Then
-        MsgBox "No merged cells found in columns A:G.", vbInformation
+        MsgBox "No merged cells found in " & src.Address(False, False) & ".", vbInformation
         Exit Sub
     End If
 
     Application.ScreenUpdating = False
+    On Error GoTo CleanUp
 
-    ' Keep a copy of the merged layout on a temporary sheet
+    ' Keep a copy of the merged layout, at the same addresses, on a temporary sheet
     Set tmp = ws.Parent.Worksheets.Add
-    src.Copy tmp.Range("A1")
+    src.Copy tmp.Range(src.Cells(1, 1).Address)
 
-    ' Unmerge and copy the top-left value into every cell of each former merge
-    src.UnMerge
+    ' Unmerge each block and copy its top-left value into the other cells
     For Each addr In areaAddresses
         Set area = ws.Range(addr)
+        area.UnMerge
         Set topCell = area.Cells(1, 1)
         For Each c In area.Cells
             If c.Address <> topCell.Address Then c.Value = topCell.Value
         Next c
     Next addr
 
-    ' Paste the formats back: this re-merges the cells but keeps the hidden values
+    ' Paste each block's formats back (like Format Painter): this re-merges
+    ' the cells but keeps the values now stored underneath
     ws.Activate
-    tmp.Range("A1").Resize(src.Rows.Count, src.Columns.Count).Copy
-    src.PasteSpecial xlPasteFormats
+    For Each addr In areaAddresses
+        tmp.Range(addr).Copy
+        ws.Range(addr).PasteSpecial xlPasteFormats
+    Next addr
+
+CleanUp:
     Application.CutCopyMode = False
+    If Not tmp Is Nothing Then
+        Application.DisplayAlerts = False
+        tmp.Delete
+        Application.DisplayAlerts = True
+    End If
+    ws.Activate
     ws.Range("A1").Select
-
-    Application.DisplayAlerts = False
-    tmp.Delete
-    Application.DisplayAlerts = True
-
     Application.ScreenUpdating = True
-    MsgBox areaAddresses.Count & " merged block(s) filled. You can now filter on columns A to G.", vbInformation
+
+    If Err.Number <> 0 Then
+        MsgBox "Stopped with an error: " & Err.Description, vbExclamation
+    Else
+        MsgBox areaAddresses.Count & " merged block(s) filled. You can now filter on these columns.", vbInformation
+    End If
 End Sub
