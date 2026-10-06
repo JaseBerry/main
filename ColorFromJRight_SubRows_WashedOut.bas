@@ -55,7 +55,7 @@ Sub ColorFromJRight_SubRows_WashedOut()
 
         ' A value anywhere in A:D or E:G starts a new EFG block.
         ' Colour the block that just ended, then start tracking the new one.
-        If RangeHasValue(ws.Range(ws.Cells(i, "A"), ws.Cells(i, "G"))) Then
+        If StartsNewGroup(ws.Range(ws.Cells(i, "A"), ws.Cells(i, "G"))) Then
             If blockStart > 0 Then
                 ColourEFGBlock ws, blockStart, i - 1, hasAccepted, hasUnderReview
             End If
@@ -139,6 +139,26 @@ Private Sub ApplyStatusColours(target As Range, statusValue As String, _
     End Select
 End Sub
 
+' True if a row starts a new group: a cell in the range has a value and is either
+' not merged or is the top-left cell of its merged area. Values copied underneath
+' merged cells (see FillUnderMergedCells) are ignored, so they don't split groups.
+Private Function StartsNewGroup(target As Range) As Boolean
+    Dim c As Range
+    For Each c In target.Cells
+        If c.MergeCells Then
+            If c.Address = c.MergeArea.Cells(1, 1).Address Then
+                If RangeHasValue(c) Then
+                    StartsNewGroup = True
+                    Exit Function
+                End If
+            End If
+        ElseIf RangeHasValue(c) Then
+            StartsNewGroup = True
+            Exit Function
+        End If
+    Next c
+End Function
+
 ' True if any cell in the range holds a non-blank, non-error value.
 Private Function RangeHasValue(target As Range) As Boolean
     Dim c As Range
@@ -189,7 +209,7 @@ Sub FilterCRQ_ByColumnQ()
     groupStart = 0
     For i = FIRST_DATA_ROW To lastRowTotal + 1
         ' A value in column A (or running past the last row) ends the current group
-        If i > lastRowTotal Or RangeHasValue(ws.Cells(i, "A")) Then
+        If i > lastRowTotal Or StartsNewGroup(ws.Cells(i, "A")) Then
             If groupStart > 0 Then
                 If groupMatches Then
                     matchCount = matchCount + 1
@@ -229,4 +249,74 @@ Private Sub AddToRange(ByRef target As Range, addition As Range)
     Else
         Set target = Union(target, addition)
     End If
+End Sub
+
+' ---------------------------------------------------------------------------
+' Copy each merged cell's value into the hidden cells underneath it (A:G),
+' keeping the merges. Excel's filter then treats every row of a merged block
+' as having the parent value. Re-run after editing or adding merged values.
+' ---------------------------------------------------------------------------
+Sub FillUnderMergedCells()
+    Dim ws As Worksheet
+    Dim tmp As Worksheet
+    Dim lastRowTotal As Long
+    Dim src As Range
+    Dim c As Range
+    Dim area As Range
+    Dim topCell As Range
+    Dim areaAddresses As Collection
+    Dim addr As Variant
+
+    Set ws = ActiveSheet
+
+    On Error Resume Next
+    lastRowTotal = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    On Error GoTo 0
+    If lastRowTotal < FIRST_DATA_ROW Then Exit Sub
+
+    Set src = ws.Range(ws.Cells(FIRST_DATA_ROW, "A"), ws.Cells(lastRowTotal, "G"))
+
+    ' Record every merged area before unmerging
+    Set areaAddresses = New Collection
+    For Each c In src.Cells
+        If c.MergeCells Then
+            If c.Address = c.MergeArea.Cells(1, 1).Address Then
+                areaAddresses.Add c.MergeArea.Address
+            End If
+        End If
+    Next c
+    If areaAddresses.Count = 0 Then
+        MsgBox "No merged cells found in columns A:G.", vbInformation
+        Exit Sub
+    End If
+
+    Application.ScreenUpdating = False
+
+    ' Keep a copy of the merged layout on a temporary sheet
+    Set tmp = ws.Parent.Worksheets.Add
+    src.Copy tmp.Range("A1")
+
+    ' Unmerge and copy the top-left value into every cell of each former merge
+    src.UnMerge
+    For Each addr In areaAddresses
+        Set area = ws.Range(addr)
+        Set topCell = area.Cells(1, 1)
+        For Each c In area.Cells
+            If c.Address <> topCell.Address Then c.Value = topCell.Value
+        Next c
+    Next addr
+
+    ' Paste the formats back: this re-merges the cells but keeps the hidden values
+    ws.Activate
+    tmp.Range("A1").Resize(src.Rows.Count, src.Columns.Count).Copy
+    src.PasteSpecial xlPasteFormats
+    Application.CutCopyMode = False
+    ws.Range("A1").Select
+
+    Application.DisplayAlerts = False
+    tmp.Delete
+    Application.DisplayAlerts = True
+
+    Application.ScreenUpdating = True
+    MsgBox areaAddresses.Count & " merged block(s) filled. You can now filter on columns A to G.", vbInformation
 End Sub
