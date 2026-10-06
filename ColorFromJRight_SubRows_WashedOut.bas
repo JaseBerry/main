@@ -1,5 +1,3 @@
-Attribute VB_Name = "StatusColouring"
-Option Explicit
 
 ' Sheet layout (three-level hierarchy):
 '   A:D  - Level 1. One row here can own several EFG rows below it.
