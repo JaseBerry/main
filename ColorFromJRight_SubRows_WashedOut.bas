@@ -1,20 +1,28 @@
-
 ' Sheet layout (three-level hierarchy):
-'   A:D  - Level 1. One row here can own several EFG rows below it.
-'   E:G  - Level 2. One row here can own several "H onwards" rows below it.
-'   H+   - Level 3. Column K holds the status. A row with K filled is a "main row";
-'          rows with K blank are "sub rows" that inherit the status above them.
+'   A    - Filter assist column (Y), merged like the CRQ-ID. Not used for grouping.
+'   B:E  - Level 1 (CRQ-ID in B). One row here can own several F:H rows below it.
+'   F:H  - Level 2. One row here can own several "I onwards" rows below it.
+'   I+   - Level 3. Column L holds the status. A row with L filled is a "main row";
+'          rows with L blank are "sub rows" that inherit the status above them.
 '
 ' Colouring:
-'   - Main rows: J to last column, coloured by their own K status.
-'   - Sub rows:  V to last column, coloured by the carried-over status.
-'   - Fills from H onwards are extra light; E:G uses the stronger washed-out fills.
-'   - E:G block: green if any K row in the block is Accepted,
+'   - Main rows: K to last column, coloured by their own status.
+'   - Sub rows:  W to last column, coloured by the carried-over status.
+'   - Fills from K onwards are extra light; F:H uses the stronger washed-out fills.
+'   - F:H block: green if any status row in the block is Accepted,
 '                otherwise yellow if any is Under Review, otherwise cleared.
-'                Text in E:G (and everything left of it) stays black.
+'                Text in F:H (and everything left of it) stays black.
+'
+' If you insert or move columns, update the letters below - nothing else.
 
 Private Const FIRST_DATA_ROW As Long = 2   ' Row 1 is the header row
-Private Const MIN_LAST_COL As Long = 22    ' Always format at least to column V
+Private Const COL_CRQ As String = "B"          ' CRQ-ID, first column of level 1
+Private Const COL_L2_FIRST As String = "F"     ' Level 2 block (coloured green/yellow)
+Private Const COL_L2_LAST As String = "H"
+Private Const COL_MAIN_FROM As String = "K"    ' Main rows are coloured from here
+Private Const COL_STATUS As String = "L"       ' Accepted / Under Review / ...
+Private Const COL_SUB_FROM As String = "W"     ' Sub rows are coloured from here
+Private Const COL_SEARCH As String = "R"       ' Searched by FilterCRQ_ByColumnQ
 
 Sub ColorFromJRight_SubRows_WashedOut()
     Dim ws As Worksheet
@@ -41,7 +49,8 @@ Sub ColorFromJRight_SubRows_WashedOut()
     ' If there is no data below the header, exit
     If lastRowTotal < FIRST_DATA_ROW Then Exit Sub
 
-    If lastCol < MIN_LAST_COL Then lastCol = MIN_LAST_COL
+    ' Always format at least to the sub-row start column
+    If lastCol < ws.Range(COL_SUB_FROM & "1").Column Then lastCol = ws.Range(COL_SUB_FROM & "1").Column
 
     calcMode = Application.Calculation
     Application.ScreenUpdating = False
@@ -53,9 +62,9 @@ Sub ColorFromJRight_SubRows_WashedOut()
 
     For i = FIRST_DATA_ROW To lastRowTotal
 
-        ' A value anywhere in A:D or E:G starts a new EFG block.
+        ' A value anywhere in level 1 or level 2 starts a new level 2 block.
         ' Colour the block that just ended, then start tracking the new one.
-        If StartsNewGroup(ws.Range(ws.Cells(i, "A"), ws.Cells(i, "G"))) Then
+        If StartsNewGroup(ws.Range(ws.Cells(i, COL_CRQ), ws.Cells(i, COL_L2_LAST))) Then
             If blockStart > 0 Then
                 ColourEFGBlock ws, blockStart, i - 1, hasAccepted, hasUnderReview
             End If
@@ -65,23 +74,23 @@ Sub ColorFromJRight_SubRows_WashedOut()
             statusValue = ""   ' Don't carry a status across into a new block
         End If
 
-        ' If Column K has a value, it's a "Main Row". Update the status and format from J to the end.
-        If RangeHasValue(ws.Cells(i, "K")) Then
-            statusValue = LCase$(Trim$(CStr(ws.Cells(i, "K").Value)))
-            Set formatRange = ws.Range(ws.Cells(i, "J"), ws.Cells(i, lastCol))
+        ' If the status column has a value, it's a "Main Row". Update the status and format from COL_MAIN_FROM.
+        If RangeHasValue(ws.Cells(i, COL_STATUS)) Then
+            statusValue = LCase$(Trim$(CStr(ws.Cells(i, COL_STATUS).Value)))
+            Set formatRange = ws.Range(ws.Cells(i, COL_MAIN_FROM), ws.Cells(i, lastCol))
 
             If statusValue = "accepted" Then hasAccepted = True
             If statusValue = "under review" Then hasUnderReview = True
 
-        ' If Column K is blank, it's a "Sub Row". Keep the previous status but format ONLY from V to the end.
+        ' If the status is blank, it's a "Sub Row". Keep the previous status but format ONLY from COL_SUB_FROM.
         Else
-            Set formatRange = ws.Range(ws.Cells(i, "V"), ws.Cells(i, lastCol))
+            Set formatRange = ws.Range(ws.Cells(i, COL_SUB_FROM), ws.Cells(i, lastCol))
         End If
 
         ApplyStatusColours formatRange, statusValue, True
     Next i
 
-    ' Colour the final EFG block
+    ' Colour the final level 2 block
     If blockStart > 0 Then
         ColourEFGBlock ws, blockStart, lastRowTotal, hasAccepted, hasUnderReview
     End If
@@ -94,11 +103,11 @@ CleanUp:
     End If
 End Sub
 
-' Colour E:G for every row in the block based on the K statuses found within it.
+' Colour the level 2 columns for every row in the block based on the statuses found within it.
 Private Sub ColourEFGBlock(ws As Worksheet, firstRow As Long, lastRow As Long, _
                            hasAccepted As Boolean, hasUnderReview As Boolean)
     Dim efgRange As Range
-    Set efgRange = ws.Range(ws.Cells(firstRow, "E"), ws.Cells(lastRow, "G"))
+    Set efgRange = ws.Range(ws.Cells(firstRow, COL_L2_FIRST), ws.Cells(lastRow, COL_L2_LAST))
 
     If hasAccepted Then
         ApplyStatusColours efgRange, "accepted"
@@ -108,12 +117,12 @@ Private Sub ColourEFGBlock(ws As Worksheet, firstRow As Long, lastRow As Long, _
         ApplyStatusColours efgRange, ""
     End If
 
-    ' Keep text black in columns G and prior; only the fill changes
+    ' Keep text black in the level 2 columns; only the fill changes
     efgRange.Font.Color = RGB(0, 0, 0)
 End Sub
 
 ' Apply washed-out fills and fonts for a status (expects lower-case, trimmed text).
-' extraLight = True uses even paler fills (used for columns H onwards).
+' extraLight = True uses even paler fills (used for the status rows).
 Private Sub ApplyStatusColours(target As Range, statusValue As String, _
                                Optional extraLight As Boolean = False)
     Select Case statusValue
@@ -174,12 +183,12 @@ End Function
 
 ' ---------------------------------------------------------------------------
 ' Filtering by CRQ-ID group
-'   A CRQ-ID group starts on a row with a value in column A and runs down to
-'   the row before the next value in column A. These macros show or hide whole
+'   A CRQ-ID group starts on a row with a value in the CRQ-ID column and runs
+'   down to the row before the next CRQ-ID. These macros show or hide whole
 '   groups, so a CRQ-ID always stays together with all of its sub rows.
 ' ---------------------------------------------------------------------------
 
-' Show only CRQ-ID groups where at least one row has the search text in column Q.
+' Show only CRQ-ID groups where at least one row has the search text in COL_SEARCH.
 Sub FilterCRQ_ByColumnQ()
     Dim ws As Worksheet
     Dim searchText As String
@@ -192,7 +201,7 @@ Sub FilterCRQ_ByColumnQ()
 
     Set ws = ActiveSheet
 
-    searchText = InputBox("Show CRQ-IDs where column Q contains:", _
+    searchText = InputBox("Show CRQ-IDs where column " & COL_SEARCH & " contains:", _
                           "Filter CRQ-IDs", "Construction Management Plan")
     If Len(Trim$(searchText)) = 0 Then Exit Sub
 
@@ -208,8 +217,8 @@ Sub FilterCRQ_ByColumnQ()
 
     groupStart = 0
     For i = FIRST_DATA_ROW To lastRowTotal + 1
-        ' A value in column A (or running past the last row) ends the current group
-        If i > lastRowTotal Or StartsNewGroup(ws.Cells(i, "A")) Then
+        ' A new CRQ-ID (or running past the last row) ends the current group
+        If i > lastRowTotal Or StartsNewGroup(ws.Cells(i, COL_CRQ)) Then
             If groupStart > 0 Then
                 If groupMatches Then
                     matchCount = matchCount + 1
@@ -222,8 +231,8 @@ Sub FilterCRQ_ByColumnQ()
         End If
 
         If i <= lastRowTotal And groupStart > 0 And Not groupMatches Then
-            If Not IsError(ws.Cells(i, "Q").Value) Then
-                If InStr(1, CStr(ws.Cells(i, "Q").Value), searchText, vbTextCompare) > 0 Then
+            If Not IsError(ws.Cells(i, COL_SEARCH).Value) Then
+                If InStr(1, CStr(ws.Cells(i, COL_SEARCH).Value), searchText, vbTextCompare) > 0 Then
                     groupMatches = True
                 End If
             End If
@@ -233,7 +242,7 @@ Sub FilterCRQ_ByColumnQ()
     If Not rowsToHide Is Nothing Then rowsToHide.EntireRow.Hidden = True
 
     Application.ScreenUpdating = True
-    MsgBox matchCount & " CRQ-ID(s) contain """ & searchText & """ in column Q.", vbInformation
+    MsgBox matchCount & " CRQ-ID(s) contain """ & searchText & """ in column " & COL_SEARCH & ".", vbInformation
 End Sub
 
 ' Unhide every data row (clears the CRQ-ID filter).
@@ -256,7 +265,7 @@ End Sub
 ' underneath it, keeping the merges. Excel's filter then treats every row of a
 ' merged block as having the parent value. Re-run after editing merged values.
 '   FillUnderAllMergedCells - every merged cell on the active sheet
-'   FillUnderMergedCells    - merged cells in the data rows of columns A:G only
+'   FillUnderMergedCells    - merged cells in the data rows, columns A to the end of level 2
 ' ---------------------------------------------------------------------------
 Sub FillUnderAllMergedCells()
     Dim ws As Worksheet
@@ -271,14 +280,14 @@ Sub FillUnderMergedCells()
     Dim firstRow As Long
 
     Set ws = ActiveSheet
-    firstRow = 2   ' First data row (row 1 is the header)
+    firstRow = FIRST_DATA_ROW
 
     On Error Resume Next
     lastRowTotal = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
     On Error GoTo 0
     If lastRowTotal < firstRow Then Exit Sub
 
-    FillMergedIn ws, ws.Range(ws.Cells(firstRow, "A"), ws.Cells(lastRowTotal, "G"))
+    FillMergedIn ws, ws.Range(ws.Cells(firstRow, "A"), ws.Cells(lastRowTotal, COL_L2_LAST))
 End Sub
 
 Private Sub FillMergedIn(ws As Worksheet, src As Range)

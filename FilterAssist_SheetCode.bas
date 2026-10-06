@@ -9,7 +9,7 @@
 ' Excel's filter then sees the value on every row of the merged block.
 ' ===========================================================================
 
-Private Const ASSIST_COL As String = "W"   ' <-- change to your filter assist column
+Private Const ASSIST_COL As String = "A"   ' <-- change to your filter assist column
 
 Private Sub Worksheet_Change(ByVal Target As Range)
     Dim hit As Range
