@@ -10,6 +10,7 @@
 '   - Sub rows:  V to last column, coloured by the carried-over status.
 '   - E:G block: green if any K row in the block is Accepted,
 '                otherwise yellow if any is Under Review, otherwise cleared.
+'                Text in E:G (and everything left of it) stays black.
 
 Private Const FIRST_DATA_ROW As Long = 2   ' Row 1 is the header row
 Private Const MIN_LAST_COL As Long = 22    ' Always format at least to column V
@@ -105,6 +106,9 @@ Private Sub ColourEFGBlock(ws As Worksheet, firstRow As Long, lastRow As Long, _
     Else
         ApplyStatusColours efgRange, ""
     End If
+
+    ' Keep text black in columns G and prior; only the fill changes
+    efgRange.Font.Color = RGB(0, 0, 0)
 End Sub
 
 ' Apply washed-out fills and fonts for a status (expects lower-case, trimmed text).
