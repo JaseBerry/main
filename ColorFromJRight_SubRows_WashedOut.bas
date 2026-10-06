@@ -151,3 +151,82 @@ Private Function RangeHasValue(target As Range) As Boolean
         End If
     Next c
 End Function
+
+' ---------------------------------------------------------------------------
+' Filtering by CRQ-ID group
+'   A CRQ-ID group starts on a row with a value in column A and runs down to
+'   the row before the next value in column A. These macros show or hide whole
+'   groups, so a CRQ-ID always stays together with all of its sub rows.
+' ---------------------------------------------------------------------------
+
+' Show only CRQ-ID groups where at least one row has the search text in column Q.
+Sub FilterCRQ_ByColumnQ()
+    Dim ws As Worksheet
+    Dim searchText As String
+    Dim lastRowTotal As Long
+    Dim i As Long
+    Dim groupStart As Long
+    Dim groupMatches As Boolean
+    Dim rowsToHide As Range
+    Dim matchCount As Long
+
+    Set ws = ActiveSheet
+
+    searchText = InputBox("Show CRQ-IDs where column Q contains:", _
+                          "Filter CRQ-IDs", "Construction Management Plan")
+    If Len(Trim$(searchText)) = 0 Then Exit Sub
+
+    On Error Resume Next
+    lastRowTotal = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    On Error GoTo 0
+    If lastRowTotal < FIRST_DATA_ROW Then Exit Sub
+
+    Application.ScreenUpdating = False
+
+    ' Start from a clean slate so repeated filters don't stack up
+    ws.Rows(FIRST_DATA_ROW & ":" & lastRowTotal).Hidden = False
+
+    groupStart = 0
+    For i = FIRST_DATA_ROW To lastRowTotal + 1
+        ' A value in column A (or running past the last row) ends the current group
+        If i > lastRowTotal Or RangeHasValue(ws.Cells(i, "A")) Then
+            If groupStart > 0 Then
+                If groupMatches Then
+                    matchCount = matchCount + 1
+                Else
+                    AddToRange rowsToHide, ws.Rows(groupStart & ":" & i - 1)
+                End If
+            End If
+            groupStart = i
+            groupMatches = False
+        End If
+
+        If i <= lastRowTotal And groupStart > 0 And Not groupMatches Then
+            If Not IsError(ws.Cells(i, "Q").Value) Then
+                If InStr(1, CStr(ws.Cells(i, "Q").Value), searchText, vbTextCompare) > 0 Then
+                    groupMatches = True
+                End If
+            End If
+        End If
+    Next i
+
+    If Not rowsToHide Is Nothing Then rowsToHide.EntireRow.Hidden = True
+
+    Application.ScreenUpdating = True
+    MsgBox matchCount & " CRQ-ID(s) contain """ & searchText & """ in column Q.", vbInformation
+End Sub
+
+' Unhide every data row (clears the CRQ-ID filter).
+Sub ShowAllCRQ()
+    Dim ws As Worksheet
+    Set ws = ActiveSheet
+    ws.Rows(FIRST_DATA_ROW & ":" & ws.Rows.Count).Hidden = False
+End Sub
+
+Private Sub AddToRange(ByRef target As Range, addition As Range)
+    If target Is Nothing Then
+        Set target = addition
+    Else
+        Set target = Union(target, addition)
+    End If
+End Sub
