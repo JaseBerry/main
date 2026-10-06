@@ -376,3 +376,122 @@ Private Sub ShowProgress(stepText As String, done As Long, total As Long)
                             Format(total, "#,##0") & " (" & Format(done / total, "0%") & ")  - press Esc to cancel"
     DoEvents
 End Sub
+
+' ---------------------------------------------------------------------------
+' Filter the CRQ-ID column to a pasted list of CRQ-IDs (multi-select filter).
+'   Copy your list (from Excel, an email, Teams...) and run the macro. It uses
+'   the clipboard if it can, otherwise it asks you to paste the list into a box.
+'   IDs can be separated by new lines, commas, semicolons, tabs or spaces.
+'   Clear it with Data -> Clear (or Ctrl+Shift+L to remove the filter buttons).
+' ---------------------------------------------------------------------------
+Sub FilterCRQ_ByPastedList()
+    Dim ws As Worksheet
+    Dim txt As String
+    Dim item As Variant
+    Dim s As String
+    Dim wanted As Object
+    Dim present As Object
+    Dim ids() As String
+    Dim nFound As Long
+    Dim missing As String
+    Dim lastRow As Long
+    Dim lastCol As Long
+    Dim vals As Variant
+    Dim r As Long
+    Dim rng As Range
+    Dim fieldNum As Long
+
+    Set ws = ActiveSheet
+
+    ' 1. Get the list: clipboard first, otherwise ask
+    txt = GetClipboardText()
+    If Len(Trim$(txt)) > 0 Then
+        If MsgBox("Filter on this list from the clipboard?" & vbCrLf & vbCrLf & Left$(txt, 400) & _
+                  IIf(Len(txt) > 400, vbCrLf & "...", ""), vbYesNo + vbQuestion, "Filter CRQ-IDs") = vbNo Then
+            txt = ""
+        End If
+    End If
+    If Len(Trim$(txt)) = 0 Then
+        txt = InputBox("Paste CRQ-IDs, separated by commas, spaces or new lines:", "Filter CRQ-IDs")
+    End If
+    If Len(Trim$(txt)) = 0 Then Exit Sub
+
+    ' 2. Split into unique IDs
+    txt = Replace(Replace(Replace(Replace(Replace(txt, vbCr, ","), vbLf, ","), vbTab, ","), ";", ","), " ", ",")
+    Set wanted = CreateObject("Scripting.Dictionary")
+    wanted.CompareMode = vbTextCompare
+    For Each item In Split(txt, ",")
+        s = Trim$(CStr(item))
+        If Len(s) > 0 Then
+            If Not wanted.Exists(s) Then wanted.Add s, True
+        End If
+    Next item
+    If wanted.Count = 0 Then Exit Sub
+
+    ' 3. Find the data and collect the CRQ-IDs that exist on the sheet
+    On Error Resume Next
+    lastRow = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+    lastCol = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByColumns, SearchDirection:=xlPrevious).Column
+    On Error GoTo 0
+    If lastRow <= FIRST_DATA_ROW Then Exit Sub
+
+    Set present = CreateObject("Scripting.Dictionary")
+    present.CompareMode = vbTextCompare
+    vals = ws.Range(ws.Cells(FIRST_DATA_ROW, COL_CRQ), ws.Cells(lastRow, COL_CRQ)).Value
+    For r = 1 To UBound(vals, 1)
+        If Not IsError(vals(r, 1)) Then
+            s = Trim$(CStr(vals(r, 1)))
+            If Len(s) > 0 And Not present.Exists(s) Then present.Add s, CStr(vals(r, 1))
+        End If
+    Next r
+
+    ' 4. Build the filter list from the IDs that exist; note the ones that don't
+    ReDim ids(0 To wanted.Count - 1)
+    For Each item In wanted.Keys
+        If present.Exists(item) Then
+            ids(nFound) = present(item)   ' use the cell's exact text so the filter matches
+            nFound = nFound + 1
+        Else
+            missing = missing & vbCrLf & "  " & item
+        End If
+    Next item
+
+    If nFound = 0 Then
+        MsgBox "None of the " & wanted.Count & " CRQ-ID(s) were found in column " & COL_CRQ & ".", vbExclamation
+        Exit Sub
+    End If
+    ReDim Preserve ids(0 To nFound - 1)
+
+    ' 5. Clear any earlier filters / hidden rows, then apply the multi-select filter
+    If ws.FilterMode Then ws.ShowAllData
+    ws.Rows(FIRST_DATA_ROW & ":" & lastRow).Hidden = False
+
+    If ws.AutoFilterMode Then
+        Set rng = ws.AutoFilter.Range
+    Else
+        Set rng = ws.Range(ws.Cells(FIRST_DATA_ROW - 1, 1), ws.Cells(lastRow, lastCol))
+    End If
+    fieldNum = ws.Range(COL_CRQ & "1").Column - rng.Column + 1
+    If fieldNum < 1 Or fieldNum > rng.Columns.Count Then
+        MsgBox "The existing filter doesn't include column " & COL_CRQ & ". Turn the filter off (Ctrl+Shift+L) and run this again.", vbExclamation
+        Exit Sub
+    End If
+
+    rng.AutoFilter Field:=fieldNum, Criteria1:=ids, Operator:=xlFilterValues
+
+    If Len(missing) > 0 Then
+        MsgBox "Filtered to " & nFound & " of " & wanted.Count & " CRQ-ID(s)." & vbCrLf & vbCrLf & _
+               "Not found in column " & COL_CRQ & ":" & missing, vbInformation
+    Else
+        MsgBox "Filtered to all " & nFound & " CRQ-ID(s).", vbInformation
+    End If
+End Sub
+
+' Read text from the Windows clipboard. Returns "" if it can't (e.g. on a Mac).
+Private Function GetClipboardText() As String
+    On Error Resume Next
+    With CreateObject("New:{1C3B4210-F441-11CE-B9EA-00AA006B1A69}")   ' MSForms.DataObject
+        .GetFromClipboard
+        GetClipboardText = .GetText
+    End With
+End Function
