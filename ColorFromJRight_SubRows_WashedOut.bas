@@ -40,7 +40,7 @@ Sub ColorFromJRight_SubRows_WashedOut()
     Set ws = ActiveSheet
 
     ' Find the absolute last row and column in the entire sheet
-    ' (Necessary because sub-rows in Column V extend further down than Column K)
+    ' (Necessary because sub-rows extend further down than the status column)
     On Error Resume Next
     lastRowTotal = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
     lastCol = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByColumns, SearchDirection:=xlPrevious).Column
@@ -276,7 +276,6 @@ End Sub
 Sub FillUnderMergedCells()
     Dim ws As Worksheet
     Dim lastRowTotal As Long
-
     Dim firstRow As Long
 
     Set ws = ActiveSheet
