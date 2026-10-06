@@ -288,45 +288,71 @@ Private Sub FillMergedIn(ws As Worksheet, src As Range)
     Dim topCell As Range
     Dim areaAddresses As Collection
     Dim addr As Variant
+    Dim n As Long
+    Dim total As Long
+    Dim calcMode As XlCalculation
+    Dim finished As Boolean
 
-    ' Record every merged area before unmerging
+    calcMode = Application.Calculation
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableCancelKey = xlErrorHandler   ' Esc jumps to CleanUp
+    On Error GoTo CleanUp
+
+    ' Step 1: record every merged area before unmerging
     Set areaAddresses = New Collection
+    total = src.Cells.Count
     For Each c In src.Cells
+        n = n + 1
+        If n Mod 5000 = 0 Then ShowProgress "Step 1 of 3: scanning cells", n, total
         If c.MergeCells Then
             If c.Address = c.MergeArea.Cells(1, 1).Address Then
                 areaAddresses.Add c.MergeArea.Address
             End If
         End If
     Next c
+
     If areaAddresses.Count = 0 Then
-        MsgBox "No merged cells found in " & src.Address(False, False) & ".", vbInformation
-        Exit Sub
+        finished = True
+        GoTo CleanUp
     End If
 
-    Application.ScreenUpdating = False
-    On Error GoTo CleanUp
-
     ' Keep a copy of the merged layout, at the same addresses, on a temporary sheet
+    Application.StatusBar = "Copying layout to a temporary sheet..."
     Set tmp = ws.Parent.Worksheets.Add
     src.Copy tmp.Range(src.Cells(1, 1).Address)
 
-    ' Unmerge each block and copy its top-left value into the other cells
+    ' Step 2: unmerge each block and copy its top-left value into the other cells
+    total = areaAddresses.Count
+    n = 0
     For Each addr In areaAddresses
+        n = n + 1
+        If n Mod 100 = 0 Then ShowProgress "Step 2 of 3: filling block", n, total
         Set area = ws.Range(addr)
         area.UnMerge
         Set topCell = area.Cells(1, 1)
-        For Each c In area.Cells
-            If c.Address <> topCell.Address Then c.Value = topCell.Value
-        Next c
+        If topCell.HasFormula Then
+            For Each c In area.Cells
+                If c.Address <> topCell.Address Then c.Value = topCell.Value
+            Next c
+        Else
+            area.Value = topCell.Value
+        End If
     Next addr
 
-    ' Paste each block's formats back (like Format Painter): this re-merges
-    ' the cells but keeps the values now stored underneath
+    ' Step 3: paste each block's formats back (like Format Painter): this
+    ' re-merges the cells but keeps the values now stored underneath
     ws.Activate
+    n = 0
     For Each addr In areaAddresses
+        n = n + 1
+        If n Mod 100 = 0 Then ShowProgress "Step 3 of 3: re-merging block", n, total
         tmp.Range(addr).Copy
         ws.Range(addr).PasteSpecial xlPasteFormats
     Next addr
+
+    finished = True
 
 CleanUp:
     Application.CutCopyMode = False
@@ -337,11 +363,25 @@ CleanUp:
     End If
     ws.Activate
     ws.Range("A1").Select
+    Application.StatusBar = False
+    Application.Calculation = calcMode
+    Application.EnableEvents = True
+    Application.EnableCancelKey = xlInterrupt
     Application.ScreenUpdating = True
 
-    If Err.Number <> 0 Then
-        MsgBox "Stopped with an error: " & Err.Description, vbExclamation
+    If Not finished Then
+        MsgBox "Stopped before finishing" & IIf(Err.Number <> 0, ": " & Err.Description, ".") & vbCrLf & _
+               "Some merged cells may now be unmerged. Close WITHOUT saving and reopen your copy.", vbExclamation
+    ElseIf areaAddresses.Count = 0 Then
+        MsgBox "No merged cells found in " & src.Address(False, False) & ".", vbInformation
     Else
         MsgBox areaAddresses.Count & " merged block(s) filled. You can now filter on these columns.", vbInformation
     End If
+End Sub
+
+' Show progress in Excel's status bar (bottom-left) and keep Excel responsive.
+Private Sub ShowProgress(stepText As String, done As Long, total As Long)
+    Application.StatusBar = stepText & " " & Format(done, "#,##0") & " of " & _
+                            Format(total, "#,##0") & " (" & Format(done / total, "0%") & ")  - press Esc to cancel"
+    DoEvents
 End Sub
