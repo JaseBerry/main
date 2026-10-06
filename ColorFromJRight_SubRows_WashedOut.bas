@@ -8,6 +8,7 @@
 ' Colouring:
 '   - Main rows: J to last column, coloured by their own K status.
 '   - Sub rows:  V to last column, coloured by the carried-over status.
+'   - Fills from H onwards are extra light; E:G uses the stronger washed-out fills.
 '   - E:G block: green if any K row in the block is Accepted,
 '                otherwise yellow if any is Under Review, otherwise cleared.
 '                Text in E:G (and everything left of it) stays black.
@@ -77,7 +78,7 @@ Sub ColorFromJRight_SubRows_WashedOut()
             Set formatRange = ws.Range(ws.Cells(i, "V"), ws.Cells(i, lastCol))
         End If
 
-        ApplyStatusColours formatRange, statusValue
+        ApplyStatusColours formatRange, statusValue, True
     Next i
 
     ' Colour the final EFG block
@@ -112,22 +113,24 @@ Private Sub ColourEFGBlock(ws As Worksheet, firstRow As Long, lastRow As Long, _
 End Sub
 
 ' Apply washed-out fills and fonts for a status (expects lower-case, trimmed text).
-Private Sub ApplyStatusColours(target As Range, statusValue As String)
+' extraLight = True uses even paler fills (used for columns H onwards).
+Private Sub ApplyStatusColours(target As Range, statusValue As String, _
+                               Optional extraLight As Boolean = False)
     Select Case statusValue
         Case "accepted"
-            target.Interior.Color = RGB(230, 245, 230)
+            target.Interior.Color = IIf(extraLight, RGB(243, 250, 243), RGB(230, 245, 230))
             target.Font.Color = RGB(130, 190, 130)
 
         Case "under review"
-            target.Interior.Color = RGB(255, 248, 220)
+            target.Interior.Color = IIf(extraLight, RGB(255, 252, 238), RGB(255, 248, 220))
             target.Font.Color = RGB(210, 170, 90)
 
         Case "cancelled"
-            target.Interior.Color = RGB(242, 242, 242)
+            target.Interior.Color = IIf(extraLight, RGB(249, 249, 249), RGB(242, 242, 242))
             target.Font.Color = RGB(160, 160, 160)
 
         Case "rejected"
-            target.Interior.Color = RGB(255, 230, 230)
+            target.Interior.Color = IIf(extraLight, RGB(255, 243, 243), RGB(255, 230, 230))
             target.Font.Color = RGB(220, 130, 130)
 
         Case Else
