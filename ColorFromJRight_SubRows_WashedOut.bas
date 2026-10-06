@@ -22,7 +22,7 @@ Private Const COL_L2_LAST As String = "H"
 Private Const COL_MAIN_FROM As String = "K"    ' Main rows are coloured from here
 Private Const COL_STATUS As String = "L"       ' Accepted / Under Review / ...
 Private Const COL_SUB_FROM As String = "W"     ' Sub rows are coloured from here
-Private Const COL_SEARCH As String = "R"       ' Searched by FilterCRQ_ByColumnQ
+Private Const COL_SEARCH As String = "R"       ' Searched by FilterCRQ_BySearchText
 
 Sub ColorFromJRight_SubRows_WashedOut()
     Dim ws As Worksheet
@@ -150,7 +150,7 @@ End Sub
 
 ' True if a row starts a new group: a cell in the range has a value and is either
 ' not merged or is the top-left cell of its merged area. Values copied underneath
-' merged cells (see FillUnderMergedCells) are ignored, so they don't split groups.
+' merged cells (see FillUnderAllMergedCells) are ignored, so they don't split groups.
 Private Function StartsNewGroup(target As Range) As Boolean
     Dim c As Range
     For Each c In target.Cells
@@ -189,7 +189,7 @@ End Function
 ' ---------------------------------------------------------------------------
 
 ' Show only CRQ-ID groups where at least one row has the search text in COL_SEARCH.
-Sub FilterCRQ_ByColumnQ()
+Sub FilterCRQ_BySearchText()
     Dim ws As Worksheet
     Dim searchText As String
     Dim lastRowTotal As Long
@@ -265,28 +265,11 @@ End Sub
 ' underneath it, keeping the merges. Excel's filter then treats every row of a
 ' merged block as having the parent value. Re-run after editing merged values.
 '   FillUnderAllMergedCells - every merged cell on the active sheet
-'   FillUnderMergedCells    - merged cells in the data rows, columns A to the end of level 2
 ' ---------------------------------------------------------------------------
 Sub FillUnderAllMergedCells()
     Dim ws As Worksheet
     Set ws = ActiveSheet
     FillMergedIn ws, ws.UsedRange
-End Sub
-
-Sub FillUnderMergedCells()
-    Dim ws As Worksheet
-    Dim lastRowTotal As Long
-    Dim firstRow As Long
-
-    Set ws = ActiveSheet
-    firstRow = FIRST_DATA_ROW
-
-    On Error Resume Next
-    lastRowTotal = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
-    On Error GoTo 0
-    If lastRowTotal < firstRow Then Exit Sub
-
-    FillMergedIn ws, ws.Range(ws.Cells(firstRow, "A"), ws.Cells(lastRowTotal, COL_L2_LAST))
 End Sub
 
 Private Sub FillMergedIn(ws As Worksheet, src As Range)
