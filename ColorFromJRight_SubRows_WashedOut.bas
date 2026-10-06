@@ -268,14 +268,17 @@ Sub FillUnderMergedCells()
     Dim ws As Worksheet
     Dim lastRowTotal As Long
 
+    Dim firstRow As Long
+
     Set ws = ActiveSheet
+    firstRow = 2   ' First data row (row 1 is the header)
 
     On Error Resume Next
     lastRowTotal = ws.Cells.Find(What:="*", After:=ws.Range("A1"), SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
     On Error GoTo 0
-    If lastRowTotal < FIRST_DATA_ROW Then Exit Sub
+    If lastRowTotal < firstRow Then Exit Sub
 
-    FillMergedIn ws, ws.Range(ws.Cells(FIRST_DATA_ROW, "A"), ws.Cells(lastRowTotal, "G"))
+    FillMergedIn ws, ws.Range(ws.Cells(firstRow, "A"), ws.Cells(lastRowTotal, "G"))
 End Sub
 
 Private Sub FillMergedIn(ws As Worksheet, src As Range)
